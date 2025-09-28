@@ -1,20 +1,33 @@
 #!/usr/bin/env bash
 set -o errexit
 
-# --- Build the frontend ---
+echo "=== STARTING BUILD PROCESS ==="
+
 echo "Building frontend..."
 cd frontend
-npm ci  # Use ci instead of install for production
+npm ci
 npm run build
+
+echo "=== FRONTEND BUILD CONTENTS ==="
+ls -la dist/
+echo "Files in dist:"
+find dist -type f | head -10
+echo "================================"
+
 cd ..
 
-# Copy frontend build into backend
 echo "Copying frontend build to backend..."
 rm -rf backend/dist
 cp -r frontend/dist backend/
 
-# --- Build the Go backend ---
+echo "=== BACKEND DIST CONTENTS ==="
+ls -la backend/dist/
+echo "Files in backend/dist:"
+find backend/dist -type f | head -10
+echo "============================="
+
 echo "Building Go backend..."
 cd backend
-go mod download
 go build -tags netgo -ldflags "-s -w" -o app .
+
+echo "=== BUILD COMPLETE ==="
