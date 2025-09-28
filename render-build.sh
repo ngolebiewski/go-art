@@ -4,16 +4,17 @@ set -o errexit
 # --- Build the frontend ---
 echo "Building frontend..."
 cd frontend
-npm install
+npm ci  # Use ci instead of install for production
 npm run build
 cd ..
 
 # Copy frontend build into backend
+echo "Copying frontend build to backend..."
 rm -rf backend/dist
 cp -r frontend/dist backend/
 
 # --- Build the Go backend ---
 echo "Building Go backend..."
 cd backend
-go build -tags netgo -ldflags "-s -w" -o app
-cd ..
+go mod download
+go build -tags netgo -ldflags "-s -w" -o app .
