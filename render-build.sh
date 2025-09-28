@@ -16,18 +16,35 @@ echo "================================"
 
 cd ..
 
-echo "Copying frontend build to backend..."
+echo "Moving frontend build to backend for embedding..."
 rm -rf backend/dist
-cp -r frontend/dist backend/
+mv frontend/dist backend/
 
-echo "=== BACKEND DIST CONTENTS ==="
+echo "=== BACKEND DIST CONTENTS (FOR EMBEDDING) ==="
 ls -la backend/dist/
 echo "Files in backend/dist:"
 find backend/dist -type f | head -10
-echo "============================="
+echo "=============================================="
 
-echo "Building Go backend..."
+echo "Building Go backend with embedded files..."
 cd backend
+
+# Set production environment for hybrid detection
+export NODE_ENV=production
+export RENDER=true
+
+echo "Environment variables set:"
+echo "  NODE_ENV=$NODE_ENV"
+echo "  RENDER=$RENDER"
+
 go build -tags netgo -ldflags "-s -w" -o app .
 
+echo "=== VERIFYING GO BINARY ==="
+ls -la app
+file app
+echo "=========================="
+
 echo "=== BUILD COMPLETE ==="
+echo "✅ Frontend built and moved to backend/dist/"
+echo "✅ Go binary built with embedded static files"
+echo "✅ Single binary contains everything!"

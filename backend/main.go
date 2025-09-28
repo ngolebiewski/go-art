@@ -1,7 +1,9 @@
 package main
 
 import (
+	"embed"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -10,6 +12,9 @@ import (
 	"time"
 )
 
+//go:embed dist/*
+var staticFiles embed.FS
+
 func main() {
 	// --- API route ---
 	http.HandleFunc("/api/hello", func(w http.ResponseWriter, r *http.Request) {
@@ -17,80 +22,28 @@ func main() {
 		fmt.Fprint(w, `{"message":"Hello from Go!"}`)
 	})
 
-	// --- Static file server (production build folder) ---
-	buildDir := "./backend/dist"
+	// --- Determine if we're in dev or production ---
+	isDev := os.Getenv("NODE_ENV") != "production" && os.Getenv("RENDER") == ""
 
-	// Check if dist directory exists
-	if _, err := os.Stat(buildDir); os.IsNotExist(err) {
-		log.Printf("WARNING: dist directory not found at %s", buildDir)
-		// List current directory contents for debugging
-		files, _ := os.ReadDir(".")
-		log.Printf("Current directory contents:")
-		for _, file := range files {
-			log.Printf("  %s", file.Name())
-		}
+	if isDev {
+		log.Println("Running in DEVELOPMENT mode - serving from filesystem")
+		setupDevServer()
+	} else {
+		log.Println("Running in PRODUCTION mode - serving from embedded files")
+		setupProdServer()
 	}
 
-	fileServer := http.FileServer(http.Dir(buildDir))
-
-	// --- SPA fallback handler ---
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// Trim leading "/" to avoid filepath.Join bug
-		reqPath := strings.TrimPrefix(r.URL.Path, "/")
-		fsPath := filepath.Join(buildDir, reqPath)
-
-		// Ensure path is inside buildDir (prevents ../ traversal)
-		absFSPath, err1 := filepath.Abs(fsPath)
-		absBuildDir, err2 := filepath.Abs(buildDir)
-		if err1 != nil || err2 != nil || !strings.HasPrefix(absFSPath, absBuildDir) {
-			log.Printf("Path traversal attempt or error: %s", reqPath)
-			http.NotFound(w, r)
-			return
-		}
-
-		info, err := os.Stat(absFSPath)
-		if err != nil || info.IsDir() {
-			// File missing → fallback to index.html
-			indexPath := filepath.Join(buildDir, "index.html")
-			if _, err := os.Stat(indexPath); os.IsNotExist(err) {
-				log.Printf("index.html not found at %s", indexPath)
-				http.NotFound(w, r)
-				return
-			}
-			log.Printf("Serving index.html for: %s", reqPath)
-			http.ServeFile(w, r, indexPath)
-			return
-		}
-
-		// Add caching for static assets
-		if strings.HasPrefix(reqPath, "static/") || strings.HasPrefix(reqPath, "assets/") {
-			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-		} else if strings.HasSuffix(reqPath, ".html") {
-			w.Header().Set("Cache-Control", "no-cache")
-		}
-
-		log.Printf("Serving static file: %s", reqPath)
-		fileServer.ServeHTTP(w, r)
-	})
-
-	// --- Listen address (env PORT or fallback to 8080) ---
+	// --- Start server ---
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
-	addr := ":" + port
 
-	log.Printf("Starting server on http://localhost%s (API at /api/...)\n", addr)
-	log.Printf("Serving static files from: %s", buildDir)
-
-	// Log absolute path for debugging
-	if absPath, err := filepath.Abs(buildDir); err == nil {
-		log.Printf("Absolute path to dist: %s", absPath)
-	}
+	log.Printf("Starting server on :%s", port)
 
 	srv := &http.Server{
-		Addr:         addr,
-		Handler:      nil, // use DefaultServeMux
+		Addr:         ":" + port,
+		Handler:      nil,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  120 * time.Second,
@@ -98,5 +51,81 @@ func main() {
 
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
+	}
+}
+
+func setupProdServer() {
+	// Production: use embedded files
+	distFS, err := fs.Sub(staticFiles, "dist")
+	if err != nil {
+		log.Fatal("Failed to create sub filesystem:", err)
+	}
+
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		serveSPA(w, r, distFS, true)
+	})
+}
+
+func setupDevServer() {
+	// Development: use filesystem (assumes you ran npm run build manually)
+	buildDir := "./dist"
+
+	// Check if dist exists, if not provide helpful message
+	if _, err := os.Stat(buildDir); os.IsNotExist(err) {
+		log.Println("No dist/ folder found. Run 'cd frontend && npm run build' first, or start React dev server separately")
+		// Still set up handler for API-only development
+		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/" {
+				w.WriteHeader(http.StatusOK)
+				fmt.Fprint(w, `
+					<h1>Go Backend Running</h1>
+					<p>API available at <a href="/api/hello">/api/hello</a></p>
+					<p>Run 'cd frontend && npm run dev' for React dev server on port 5173</p>
+				`)
+				return
+			}
+			http.NotFound(w, r)
+		})
+		return
+	}
+
+	// Serve from filesystem
+	distFS := os.DirFS(buildDir)
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		serveSPA(w, r, distFS, false)
+	})
+}
+
+func serveSPA(w http.ResponseWriter, r *http.Request, distFS fs.FS, isEmbedded bool) {
+	path := strings.TrimPrefix(r.URL.Path, "/")
+	if path == "" {
+		path = "index.html"
+	}
+
+	// Try to serve the requested file
+	if file, err := distFS.Open(path); err == nil {
+		file.Close()
+
+		// Add appropriate headers
+		if strings.HasPrefix(path, "assets/") {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else if strings.HasSuffix(path, ".html") {
+			w.Header().Set("Cache-Control", "no-cache")
+		}
+
+		if isEmbedded {
+			http.ServeFileFS(w, r, distFS, path)
+		} else {
+			http.ServeFile(w, r, filepath.Join("dist", path))
+		}
+		return
+	}
+
+	// File not found, serve index.html for SPA routing
+	w.Header().Set("Cache-Control", "no-cache")
+	if isEmbedded {
+		http.ServeFileFS(w, r, distFS, "index.html")
+	} else {
+		http.ServeFile(w, r, "dist/index.html")
 	}
 }
