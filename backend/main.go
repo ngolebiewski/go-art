@@ -18,7 +18,7 @@ func main() {
 	})
 
 	// --- Static file server (production build folder) ---
-	buildDir := "./frontend/build"
+	buildDir := "./dist"
 	fileServer := http.FileServer(http.Dir(buildDir))
 
 	// --- SPA fallback handler ---

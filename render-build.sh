@@ -8,10 +8,12 @@ npm install
 npm run build
 cd ..
 
-# Copy build output into backend root (next to main.go)
-rm -rf dist
-cp -r frontend/dist .
+# Copy frontend build into backend
+rm -rf backend/dist
+cp -r frontend/dist backend/
 
-# --- Build the Go app ---
+# --- Build the Go backend ---
 echo "Building Go backend..."
+cd backend
 go build -tags netgo -ldflags "-s -w" -o app
+cd ..
