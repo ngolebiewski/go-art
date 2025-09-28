@@ -18,7 +18,7 @@ func main() {
 	})
 
 	// --- Static file server (production build folder) ---
-	buildDir := "./dist"
+	buildDir := "./backend/dist"
 
 	// Check if dist directory exists
 	if _, err := os.Stat(buildDir); os.IsNotExist(err) {
