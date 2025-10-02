@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import Login from "./components/Login";
 
 type HelloResponse = {
   message: string;
@@ -26,15 +27,18 @@ function App() {
   }, []);
 
   return (
-    <body>
+    <>
       <div style={{ fontFamily: "system-ui, sans-serif", padding: "1rem" }}>
         {/* imagine bubbly, baloon, but stylized sharp modern all cap isometric letters floating here, three.js? */}
         <h1>GO ART!</h1>
+ 
+
 
         <h2>{msg}</h2>
         <p>go-art starter with Go + Vite + React + TypeScript 🎨</p>
+        <Login />
       </div>
-    </body>
+    </>
   );
 }
 

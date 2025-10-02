@@ -36,7 +36,8 @@ CREATE TABLE artworks (
     id INT AUTO_INCREMENT PRIMARY KEY,
     artist_id INT NOT NULL,               -- Artwork belongs to an artist
     grade VARCHAR(20),                    -- optional
-    school VARCHAR(20),                   -- optional
+    school VARCHAR(30),                   -- optional
+    title VARCHAR(100),                    -- optional
     description VARCHAR(500),             -- optional
     FOREIGN KEY(artist_id) REFERENCES artists(id) ON DELETE CASCADE
 );
