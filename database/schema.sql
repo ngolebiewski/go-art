@@ -6,7 +6,8 @@ CREATE TABLE users (
     fname VARCHAR(30) NOT NULL,
     lname VARCHAR(60) NOT NULL,
     email VARCHAR(60) NOT NULL UNIQUE,
-    pwd CHAR(60) NOT NULL -- store Argon2 or bcrypt hash
+    pwd CHAR(60) NOT NULL, -- store Argon2 or bcrypt hash
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ------------------------
@@ -15,7 +16,8 @@ CREATE TABLE users (
 CREATE TABLE artists (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(60) NOT NULL, -- in the api, make sure to limit this field to the user 'admin' associated with it. 
-    codename VARCHAR(60); -- optional to store alias for artist name, i.e. political artist, grafitti artist, student, for privacy
+    codename VARCHAR(60), -- optional to store alias for artist name, i.e. political artist, grafitti artist, student, for privacy
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ------------------------
@@ -39,6 +41,7 @@ CREATE TABLE artworks (
     school VARCHAR(30),                   -- optional
     title VARCHAR(100),                    -- optional
     description VARCHAR(500),             -- optional
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(artist_id) REFERENCES artists(id) ON DELETE CASCADE
 );
 
@@ -51,6 +54,7 @@ CREATE TABLE images (
     url VARCHAR(255),                     -- optional link
     thumb BLOB,                           -- thumbnail image <64KB
     image MEDIUMBLOB NOT NULL,            -- full image
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(artwork_id) REFERENCES artworks(id) ON DELETE CASCADE
 );
 
@@ -76,27 +80,37 @@ CREATE TABLE artworks_mediums (
 DROP VIEW IF EXISTS all_artwork_data;
 
 -- ------------------------
--- Collates together all the artist/artwork/medium data + a thumbnail and a link. May still b eto BIG with BLOBS
--- Note: Coalesce is cool, If codename (artist alias) is set, it shows up in the view, otherwise if null the name will show. 
+-- Collates together all the artist/artwork/medium data + a thumbnail and a link.
+-- Uses CREATE OR REPLACE VIEW to handle existence and updates in a single statement.
 -- ------------------------
 
-If codename is NULL, the real name is shown.
-CREATE VIEW all_artwork_data AS
+CREATE OR REPLACE VIEW all_artwork_data AS
 SELECT 
     a.id AS artwork_id,
     a.grade,
     a.school,
+    a.title,
     a.description,
-    COALESCE(ar.codename, ar.name) AS artist_name,
+    COALESCE(ar.codename, ar.name) AS artist_name, -- COALESCE(ar.codename, ar.name) as artist_name is the expression.
     i.url,
-    i.thumb, -- include thumbnail but not full image
+    i.thumb, -- BLOB thumbnail
     GROUP_CONCAT(m.name ORDER BY m.name SEPARATOR ', ') AS mediums
 FROM artworks a
 JOIN artists ar ON a.artist_id = ar.id
 LEFT JOIN images i ON a.id = i.artwork_id
 LEFT JOIN artworks_mediums am ON a.id = am.artwork_id
 LEFT JOIN mediums m ON am.medium_id = m.id
-GROUP BY a.id, a.grade, a.school, a.description, ar.name, ar.codename, i.url, i.thumb;
+GROUP BY 
+    a.id, 
+    a.grade, 
+    a.school, 
+    a.title,         -- 🚨 CRITICAL FIX: Added a.title
+    a.description, 
+    ar.codename,     -- Included components of the COALESCE expression
+    ar.name,         -- Included components of the COALESCE expression
+    i.url, 
+    i.thumb
+ORDER BY a.id; -- Optional, but good practice for view stability
 
 
 -- For fast artist -> artworks lookups
